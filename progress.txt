@@ -22,3 +22,10 @@ Status: COMPLETE
 - Test exists in index.test.ts:11-17 and passes
 - All tests pass (3/3)
 - TypeScript type checking passes
+
+Task: Add a simple start script in package.json
+Status: COMPLETE
+- Added "scripts" section to package.json with "start": "bun run index.ts"
+- Server can now be started with `bun run start`
+- All tests pass (3/3)
+- TypeScript type checking passes
