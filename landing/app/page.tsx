@@ -13,7 +13,7 @@ const jsonLd = {
   operatingSystem: "macOS, Linux, Windows",
   description:
     "Run AI agents on your tasks until done. Supports Claude Code, OpenCode, Codex, Cursor, Qwen-Code and Factory Droid.",
-  url: "https://ralphy.dev",
+  url: "https://ralphy.goshen.fyi",
   offers: {
     "@type": "Offer",
     price: "0",

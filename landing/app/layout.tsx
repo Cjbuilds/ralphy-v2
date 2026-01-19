@@ -3,7 +3,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://ralphy.dev"),
+  metadataBase: new URL("https://ralphy.goshen.fyi"),
   title: {
     default: "Ralphy - Autonomous AI Coding Loop",
     template: "%s | Ralphy",
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     description:
       "Run AI agents on your tasks until done. Supports Claude Code, OpenCode, Codex, Cursor, Qwen-Code and Factory Droid.",
     type: "website",
-    url: "https://ralphy.dev",
+    url: "https://ralphy.goshen.fyi",
     siteName: "Ralphy",
     images: [
       {
@@ -59,9 +59,10 @@ export const metadata: Metadata = {
     description:
       "Run AI agents on your tasks until done. Supports Claude Code, OpenCode, Codex, Cursor, Qwen-Code and Factory Droid.",
     images: ["/ralphy.jpeg"],
+    creator: "@rasmic",
   },
   alternates: {
-    canonical: "https://ralphy.dev",
+    canonical: "https://ralphy.goshen.fyi",
   },
   icons: {
     icon: "/logo.png",
