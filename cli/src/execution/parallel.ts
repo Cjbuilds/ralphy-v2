@@ -12,7 +12,6 @@ import {
 } from "../git/merge.ts";
 import { cleanupAgentWorktree, createAgentWorktree, getWorktreeBase } from "../git/worktree.ts";
 import type { Task, TaskSource } from "../tasks/types.ts";
-import { YamlTaskSource } from "../tasks/yaml.ts";
 import { logDebug, logError, logInfo, logSuccess, logWarn } from "../ui/logger.ts";
 import { notifyTaskComplete, notifyTaskFailed } from "../ui/notify.ts";
 import { resolveConflictsWithAI } from "./conflict-resolution.ts";
@@ -66,7 +65,7 @@ async function runAgentInWorktree(
 		logDebug(`Agent ${agentNum}: Created worktree at ${worktreeDir}`);
 
 		// Copy PRD file or folder to worktree
-		if (prdSource === "markdown" || prdSource === "yaml") {
+		if (prdSource === "markdown" || prdSource === "yaml" || prdSource === "json") {
 			const srcPath = join(originalDir, prdFile);
 			const destPath = join(worktreeDir, prdFile);
 			if (existsSync(srcPath)) {
@@ -182,14 +181,18 @@ export async function runParallel(
 		// Get tasks for this batch
 		let tasks: Task[] = [];
 
-		// For YAML sources, try to get tasks from the same parallel group
-		if (taskSource instanceof YamlTaskSource) {
+		const taskSourceWithGroups = taskSource as TaskSource & {
+			getParallelGroup?: (title: string) => Promise<number>;
+			getTasksInGroup?: (group: number) => Promise<Task[]>;
+		};
+
+		if (taskSourceWithGroups.getParallelGroup && taskSourceWithGroups.getTasksInGroup) {
 			const nextTask = await taskSource.getNextTask();
 			if (!nextTask) break;
 
-			const group = await taskSource.getParallelGroup(nextTask.title);
+			const group = await taskSourceWithGroups.getParallelGroup(nextTask.title);
 			if (group > 0) {
-				tasks = await taskSource.getTasksInGroup(group);
+				tasks = await taskSourceWithGroups.getTasksInGroup(group);
 			} else {
 				tasks = [nextTask];
 			}

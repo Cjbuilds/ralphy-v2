@@ -136,6 +136,23 @@ tasks:
     completed: false
 ```
 
+**JSON**:
+```bash
+ralphy --json PRD.json
+```
+```json
+{
+  "tasks": [
+    {
+      "title": "create auth",
+      "completed": false,
+      "parallel_group": 1,
+      "description": "Optional details"
+    }
+  ]
+}
+```
+
 **GitHub Issues**:
 ```bash
 ralphy --github owner/repo
@@ -216,6 +233,7 @@ capabilities:
 |------|--------------|
 | `--prd PATH` | task file or folder (auto-detected, default: PRD.md) |
 | `--yaml FILE` | YAML task file |
+| `--json FILE` | JSON task file |
 | `--github REPO` | use GitHub issues |
 | `--github-label TAG` | filter issues by label |
 | `--model NAME` | override model for any engine |
