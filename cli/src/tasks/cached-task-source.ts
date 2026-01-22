@@ -1,3 +1,4 @@
+import { logError } from "../ui/logger.ts";
 import type { Task, TaskSource, TaskSourceType } from "./types.ts";
 import { YamlTaskSource } from "./yaml.ts";
 
@@ -26,6 +27,8 @@ export class CachedTaskSource implements TaskSource {
 	private pendingCompletions: Set<string> = new Set();
 	private flushTimer: ReturnType<typeof setTimeout> | null = null;
 	private flushIntervalMs: number;
+	private flushRetryCount = 0;
+	private static readonly MAX_FLUSH_RETRIES = 3;
 
 	constructor(inner: TaskSource, options?: CachedTaskSourceOptions) {
 		this.inner = inner;
@@ -60,7 +63,7 @@ export class CachedTaskSource implements TaskSource {
 
 	async getNextTask(): Promise<Task | null> {
 		const tasks = await this.getAllTasks();
-		return tasks[0] || null;
+		return tasks[0] ?? null;
 	}
 
 	async markComplete(id: string): Promise<void> {
@@ -140,6 +143,17 @@ export class CachedTaskSource implements TaskSource {
 		return this.pendingCompletions.size > 0;
 	}
 
+	/**
+	 * Dispose of the cached task source, cancelling any pending flush timer.
+	 * Call this when you're done with the source to prevent memory leaks.
+	 */
+	dispose(): void {
+		if (this.flushTimer) {
+			clearTimeout(this.flushTimer);
+			this.flushTimer = null;
+		}
+	}
+
 	private scheduleFlush(): void {
 		if (this.flushIntervalMs === 0) {
 			// Auto-flush disabled
@@ -151,10 +165,24 @@ export class CachedTaskSource implements TaskSource {
 		}
 		this.flushTimer = setTimeout(() => {
 			this.flushTimer = null;
-			this.flush().catch((err) => {
-				console.error("CachedTaskSource: Failed to flush:", err);
-				this.scheduleFlush(); // Retry on failure
-			});
+			this.flush()
+				.then(() => {
+					// Reset retry count on success
+					this.flushRetryCount = 0;
+				})
+				.catch((err) => {
+					this.flushRetryCount++;
+					if (this.flushRetryCount < CachedTaskSource.MAX_FLUSH_RETRIES) {
+						logError(
+							`CachedTaskSource: Failed to flush (retry ${this.flushRetryCount}/${CachedTaskSource.MAX_FLUSH_RETRIES}): ${err}`,
+						);
+						this.scheduleFlush(); // Retry on failure
+					} else {
+						logError(
+							`CachedTaskSource: Failed to flush after ${CachedTaskSource.MAX_FLUSH_RETRIES} retries: ${err}`,
+						);
+					}
+				});
 		}, this.flushIntervalMs);
 	}
 }
@@ -163,9 +191,6 @@ export class CachedTaskSource implements TaskSource {
  * Wrap a TaskSource with caching.
  * Convenience function that returns the same type hints.
  */
-export function withCache(
-	source: TaskSource,
-	options?: CachedTaskSourceOptions,
-): CachedTaskSource {
+export function withCache(source: TaskSource, options?: CachedTaskSourceOptions): CachedTaskSource {
 	return new CachedTaskSource(source, options);
 }
