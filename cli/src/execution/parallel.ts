@@ -169,7 +169,7 @@ async function runAgentInSandbox(
 		);
 
 		// Copy PRD file or folder to sandbox (same as worktree mode)
-		if (prdSource === "markdown" || prdSource === "yaml") {
+		if (prdSource === "markdown" || prdSource === "yaml" || prdSource === "json") {
 			const srcPath = join(originalDir, prdFile);
 			const destPath = join(sandboxDir, prdFile);
 			if (existsSync(srcPath)) {
