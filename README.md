@@ -247,6 +247,42 @@ capabilities:
   browser: "auto"  # "auto", "true", or "false"
 ```
 
+## Webhook Notifications
+
+Get notified when sessions complete via Discord, Slack, or custom webhooks.
+
+**Config** (`.ralphy/config.yaml`):
+```yaml
+notifications:
+  discord_webhook: "https://discord.com/api/webhooks/..."
+  slack_webhook: "https://hooks.slack.com/services/..."
+  custom_webhook: "https://your-api.com/webhook"
+```
+
+Notifications include task completion counts and status (completed/failed).
+
+## Sandbox Mode
+
+For large repos with big dependency directories, sandbox mode is faster than git worktrees:
+
+```bash
+ralphy --parallel --sandbox
+```
+
+**How it works:**
+- **Symlinks** read-only dependencies (`node_modules`, `.git`, `vendor`, `.venv`, `.pnpm-store`, `.yarn`, `.cache`)
+- **Copies** source files that agents might modify (`src/`, `app/`, `lib/`, config files, etc.)
+
+**Why use it:**
+- Avoids duplicating gigabytes of `node_modules` across worktrees
+- Much faster sandbox creation for large monorepos
+- Changes sync back to original directory after each task
+
+**When to use worktrees instead (default):**
+- Need full git history access in each sandbox
+- Running `git` commands that require a real repo
+- Smaller repos where worktree overhead is minimal
+
 ## Options
 
 | Flag | What it does |
@@ -260,6 +296,7 @@ capabilities:
 | `--sonnet` | shortcut for `--claude --model sonnet` |
 | `--parallel` | run parallel |
 | `--max-parallel N` | max agents (default: 3) |
+| `--sandbox` | use lightweight sandboxes instead of git worktrees |
 | `--no-merge` | skip auto-merge in parallel mode |
 | `--branch-per-task` | branch per task |
 | `--base-branch NAME` | base branch |
@@ -312,6 +349,17 @@ capabilities:
 ---
 
 ## Changelog
+
+### v4.5.0
+- **sandbox mode**: lightweight isolation using symlinks for dependencies (faster than worktrees)
+- **performance improvements**: task caching, parallel merge analysis, smart branch ordering
+- **webhook notifications**: Discord, Slack, and custom webhooks for session completion (configure in `.ralphy/config.yaml`)
+- **engine-specific arguments**: pass arguments to underlying CLI via `--` separator
+- **Windows improvements**: better error handling for .cmd wrappers
+
+### v4.4.1
+- Windows line ending handling fixes
+- Windows Bun command resolution fixes
 
 ### v4.4.0
 - GitHub Copilot CLI support (`--copilot`)
