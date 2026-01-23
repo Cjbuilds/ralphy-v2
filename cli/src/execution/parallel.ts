@@ -24,6 +24,7 @@ import { YamlTaskSource } from "../tasks/yaml.ts";
 import { logDebug, logError, logInfo, logSuccess, logWarn } from "../ui/logger.ts";
 import { notifyTaskComplete, notifyTaskFailed } from "../ui/notify.ts";
 import { resolveConflictsWithAI } from "./conflict-resolution.ts";
+import { clearDeferredTask, recordDeferredTask } from "./deferred.ts";
 import { buildParallelPrompt } from "./prompt.ts";
 import { isRetryableError, withRetry } from "./retry.ts";
 import { commitSandboxChanges } from "./sandbox-git.ts";
@@ -490,8 +491,23 @@ export async function runParallel(
 			if (failureReason) {
 				retryableFailure = isRetryableError(failureReason);
 				if (retryableFailure) {
-					logWarn(`Task "${task.title}" deferred: ${failureReason}`);
-					result.tasksFailed++;
+					const deferrals = recordDeferredTask(taskSource.type, task, workDir, prdFile);
+					if (deferrals >= maxRetries) {
+						logError(
+							`Task "${task.title}" failed after ${deferrals} deferrals: ${failureReason}`,
+						);
+						logTaskProgress(task.title, "failed", workDir);
+						result.tasksFailed++;
+						notifyTaskFailed(task.title, failureReason);
+						await taskSource.markComplete(task.id);
+						clearDeferredTask(taskSource.type, task, workDir, prdFile);
+						retryableFailure = false;
+					} else {
+						logWarn(
+							`Task "${task.title}" deferred (${deferrals}/${maxRetries}): ${failureReason}`,
+						);
+						result.tasksFailed++;
+					}
 				} else {
 					logError(`Task "${task.title}" failed: ${failureReason}`);
 					logTaskProgress(task.title, "failed", workDir);
@@ -501,6 +517,7 @@ export async function runParallel(
 					// Mark failed task as complete to remove it from the queue
 					// This prevents infinite retry loops - the task has already been retried maxRetries times
 					await taskSource.markComplete(task.id);
+					clearDeferredTask(taskSource.type, task, workDir, prdFile);
 				}
 			} else if (aiResult?.success) {
 				logSuccess(`Task "${task.title}" completed`);
@@ -511,6 +528,7 @@ export async function runParallel(
 				logTaskProgress(task.title, "completed", workDir);
 				result.tasksCompleted++;
 				notifyTaskComplete(task.title);
+				clearDeferredTask(taskSource.type, task, workDir, prdFile);
 
 				// Track successful branch for merge phase
 				if (branchName) {
@@ -520,9 +538,21 @@ export async function runParallel(
 				const errMsg = aiResult?.error || "Unknown error";
 				retryableFailure = isRetryableError(errMsg);
 				if (retryableFailure) {
-					logWarn(`Task "${task.title}" deferred: ${errMsg}`);
-					result.tasksFailed++;
-					failureReason = errMsg;
+					const deferrals = recordDeferredTask(taskSource.type, task, workDir, prdFile);
+					if (deferrals >= maxRetries) {
+						logError(`Task "${task.title}" failed after ${deferrals} deferrals: ${errMsg}`);
+						logTaskProgress(task.title, "failed", workDir);
+						result.tasksFailed++;
+						notifyTaskFailed(task.title, errMsg);
+						failureReason = errMsg;
+						await taskSource.markComplete(task.id);
+						clearDeferredTask(taskSource.type, task, workDir, prdFile);
+						retryableFailure = false;
+					} else {
+						logWarn(`Task "${task.title}" deferred (${deferrals}/${maxRetries}): ${errMsg}`);
+						result.tasksFailed++;
+						failureReason = errMsg;
+					}
 				} else {
 					logError(`Task "${task.title}" failed: ${errMsg}`);
 					logTaskProgress(task.title, "failed", workDir);
@@ -533,6 +563,7 @@ export async function runParallel(
 					// Mark failed task as complete to remove it from the queue
 					// This prevents infinite retry loops - the task has already been retried maxRetries times
 					await taskSource.markComplete(task.id);
+					clearDeferredTask(taskSource.type, task, workDir, prdFile);
 				}
 			}
 

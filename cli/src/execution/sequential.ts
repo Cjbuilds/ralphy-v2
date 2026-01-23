@@ -6,6 +6,7 @@ import type { Task, TaskSource } from "../tasks/types.ts";
 import { logDebug, logError, logInfo, logSuccess, logWarn } from "../ui/logger.ts";
 import { notifyTaskComplete, notifyTaskFailed } from "../ui/notify.ts";
 import { ProgressSpinner } from "../ui/spinner.ts";
+import { clearDeferredTask, recordDeferredTask } from "./deferred.ts";
 import { buildPrompt } from "./prompt.ts";
 import { isRetryableError, sleep, withRetry } from "./retry.ts";
 
@@ -176,6 +177,7 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 					result.tasksCompleted++;
 
 					notifyTaskComplete(task.title);
+					clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
 
 					// Create PR if needed
 					if (createPr && branch && baseBranch) {
@@ -195,29 +197,59 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 				} else {
 					const errMsg = aiResult.error || "Unknown error";
 					if (isRetryableError(errMsg)) {
+						const deferrals = recordDeferredTask(taskSource.type, task, workDir, options.prdFile);
 						spinner.error(errMsg);
-						logWarn(`Temporary failure, stopping early: ${errMsg}`);
-						result.tasksFailed++;
-						abortDueToRetryableFailure = true;
+						if (deferrals >= maxRetries) {
+							logError(
+								`Task "${task.title}" failed after ${deferrals} deferrals: ${errMsg}`,
+							);
+							logTaskProgress(task.title, "failed", workDir);
+							result.tasksFailed++;
+							notifyTaskFailed(task.title, errMsg);
+							await taskSource.markComplete(task.id);
+							clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
+						} else {
+							logWarn(
+								`Temporary failure, stopping early (${deferrals}/${maxRetries}): ${errMsg}`,
+							);
+							result.tasksFailed++;
+							abortDueToRetryableFailure = true;
+						}
 					} else {
 						spinner.error(errMsg);
 						logTaskProgress(task.title, "failed", workDir);
 						result.tasksFailed++;
 						notifyTaskFailed(task.title, errMsg);
+						clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
 					}
 				}
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				if (isRetryableError(errorMsg)) {
+					const deferrals = recordDeferredTask(taskSource.type, task, workDir, options.prdFile);
 					spinner.error(errorMsg);
-					logWarn(`Temporary failure, stopping early: ${errorMsg}`);
-					result.tasksFailed++;
-					abortDueToRetryableFailure = true;
+					if (deferrals >= maxRetries) {
+						logError(
+							`Task "${task.title}" failed after ${deferrals} deferrals: ${errorMsg}`,
+						);
+						logTaskProgress(task.title, "failed", workDir);
+						result.tasksFailed++;
+						notifyTaskFailed(task.title, errorMsg);
+						await taskSource.markComplete(task.id);
+						clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
+					} else {
+						logWarn(
+							`Temporary failure, stopping early (${deferrals}/${maxRetries}): ${errorMsg}`,
+						);
+						result.tasksFailed++;
+						abortDueToRetryableFailure = true;
+					}
 				} else {
 					spinner.error(errorMsg);
 					logTaskProgress(task.title, "failed", workDir);
 					result.tasksFailed++;
 					notifyTaskFailed(task.title, errorMsg);
+					clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
 				}
 			}
 		}
