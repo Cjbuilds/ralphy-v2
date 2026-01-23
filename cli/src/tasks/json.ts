@@ -45,6 +45,9 @@ export class JsonTaskSource implements TaskSource {
 
 	async getAllTasks(): Promise<Task[]> {
 		const data = this.readFile();
+		if (!data.tasks || !Array.isArray(data.tasks)) {
+			throw new Error("Invalid JSON task file: 'tasks' array is required");
+		}
 		return (data.tasks || [])
 			.filter((task) => !task.completed)
 			.map((task) => ({
