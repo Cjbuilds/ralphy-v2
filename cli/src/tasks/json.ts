@@ -92,7 +92,10 @@ export class JsonTaskSource implements TaskSource {
 
 	async getTasksInGroup(group: number): Promise<Task[]> {
 		const data = this.readFile();
-		return (data.tasks || [])
+		if (!data.tasks || !Array.isArray(data.tasks)) {
+			throw new Error("Invalid JSON task file: 'tasks' array is required");
+		}
+		return data.tasks
 			.filter((task) => !task.completed && (task.parallel_group || 0) === group)
 			.map((task) => ({
 				id: task.title,
