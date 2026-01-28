@@ -470,11 +470,16 @@ o1-preview 1.5m in, 0.5m out, 0.1m cached`,
 	});
 
 	describe("Error Handling", () => {
+		// Note: We are intentionally conservative with error detection.
+		// We don't have documentation on Copilot CLI's error response formats,
+		// exit codes, or error messages. The only error we actually detect
+		// is authentication errors (which we've observed in practice).
+
 		it("should detect authentication errors when output starts with auth message", async () => {
 			const spy = spyOn(baseModule, "execCommand").mockResolvedValue({
 				stdout: "Not authenticated. Please login first.",
 				stderr: "",
-				exitCode: 1,
+				exitCode: 0, // We don't know if Copilot uses non-zero exit codes
 			});
 
 			const result = await engine.execute("test", testWorkDir);
@@ -486,9 +491,9 @@ o1-preview 1.5m in, 0.5m out, 0.1m cached`,
 			spy.mockRestore();
 		});
 
-		it("should detect rate limit errors when output starts with rate limit message", async () => {
+		it("should detect 'no authentication' variant", async () => {
 			const spy = spyOn(baseModule, "execCommand").mockResolvedValue({
-				stdout: "Rate limit exceeded. Try again later.",
+				stdout: "No authentication found. Please run /login.",
 				stderr: "",
 				exitCode: 0,
 			});
@@ -496,7 +501,26 @@ o1-preview 1.5m in, 0.5m out, 0.1m cached`,
 			const result = await engine.execute("test", testWorkDir);
 
 			expect(result.success).toBe(false);
-			expect(result.error).toContain("rate limit");
+			expect(result.error).toContain("not authenticated");
+
+			spy.mockRestore();
+		});
+
+		it("should NOT treat rate limit in response content as CLI error", async () => {
+			// We don't know what Copilot's rate limit error looks like
+			// So we don't detect it - it could be valid response content
+			const spy = spyOn(baseModule, "execCommand").mockResolvedValue({
+				stdout: `The API has rate limiting:
+Rate limit exceeded errors should be handled gracefully
+model-name 1000 in, 500 out, 200 cached`,
+				stderr: "",
+				exitCode: 0,
+			});
+
+			const result = await engine.execute("test", testWorkDir);
+
+			expect(result.success).toBe(true);
+			expect(result.response).toContain("Rate limit exceeded errors");
 
 			spy.mockRestore();
 		});
@@ -521,44 +545,13 @@ model-name 1000 in, 500 out, 200 cached`,
 			spy.mockRestore();
 		});
 
-		it("should handle network errors via non-zero exit code", async () => {
-			// Real network errors will cause non-zero exit codes
-			const spy = spyOn(baseModule, "execCommand").mockResolvedValue({
-				stdout: "Network error: Connection refused",
-				stderr: "",
-				exitCode: 1,
-			});
-
-			const result = await engine.execute("test", testWorkDir);
-
-			expect(result.success).toBe(false);
-			// Error comes from exit code handling, not text detection
-			expect(result.error).toContain("exit code 1");
-
-			spy.mockRestore();
-		});
-
-		it("should handle generic errors when output starts with Error:", async () => {
-			const spy = spyOn(baseModule, "execCommand").mockResolvedValue({
-				stdout: "Error: Something went wrong",
-				stderr: "",
-				exitCode: 1,
-			});
-
-			const result = await engine.execute("test", testWorkDir);
-
-			expect(result.success).toBe(false);
-			expect(result.error).toBe("Something went wrong");
-
-			spy.mockRestore();
-		});
-
-		it("should NOT detect error: in middle of response as CLI error", async () => {
-			// "error:" appearing in middle of valid response should not be treated as error
+		it("should NOT treat 'Error:' in response content as CLI error", async () => {
+			// "Error:" appearing in response should not be treated as error
+			// We don't know if Copilot uses "Error:" prefix for CLI errors
 			const spy = spyOn(baseModule, "execCommand").mockResolvedValue({
 				stdout: `Here's the fix for the code:
-The function should handle the error: connection timeout case
-And also the error: file not found case
+Error: connection timeout - this needs to be caught
+Error: file not found - handle this case too
 model-name 1000 in, 500 out, 200 cached`,
 				stderr: "",
 				exitCode: 0,
@@ -567,36 +560,14 @@ model-name 1000 in, 500 out, 200 cached`,
 			const result = await engine.execute("test", testWorkDir);
 
 			expect(result.success).toBe(true);
-			expect(result.response).toContain("error: connection timeout");
+			expect(result.response).toContain("Error: connection timeout");
 
 			spy.mockRestore();
 		});
 
-		it("should capture multi-line error messages", async () => {
-			const spy = spyOn(baseModule, "execCommand").mockResolvedValue({
-				stdout: `Error: Failed to process request
-Details: The model encountered an issue
-Stack trace: at line 42
-
-Some other output after double newline`,
-				stderr: "",
-				exitCode: 1,
-			});
-
-			const result = await engine.execute("test", testWorkDir);
-
-			expect(result.success).toBe(false);
-			// Should capture all lines until double-newline
-			expect(result.error).toContain("Failed to process request");
-			expect(result.error).toContain("Details: The model encountered an issue");
-			expect(result.error).toContain("Stack trace: at line 42");
-			// Should not include content after double-newline
-			expect(result.error).not.toContain("Some other output");
-
-			spy.mockRestore();
-		});
-
-		it("should handle non-zero exit codes", async () => {
+		it("should handle non-zero exit codes (even though we don't know if Copilot uses them)", async () => {
+			// We still check exit codes as a fallback, but we don't know
+			// if Copilot actually uses them for errors
 			const spy = spyOn(baseModule, "execCommand").mockResolvedValue({
 				stdout: "Some output before failure",
 				stderr: "",
